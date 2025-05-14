@@ -1,0 +1,211 @@
+2.3.1 Installing and Enabling firewalld
+The firewalld service cannot be used together with iptables. Therefore, if iptables,
+ip6tables, ebtables, and ipset are being used, disable these services before enabling
+firewalld.
+Step 1 Install firewalld and enable it to be automatically started upon system startup.
+systemctl disable --now iptables.service
+systemctl disable --now ip6tables.service
+systemctl disable --now etables.service
+systemctl disable --now ipset.service
+dnf -y install firewalld firewall-config
+systemctl unmask --now firewalld.service
+systemctl enable --now firewalld.service
+Step 2 Check the firewalld status.
+[root@Jumpserver ~]# systemctl status firewalld
+● firewalld.service - firewalld - dynamic firewall daemon
+ Loaded: loaded (/usr/lib/systemd/system/firewalld.service; enabled; vendor pr
+ Active: active (running) since Wed 2016-06-29 14:28:51 CEST; 1 weeks 6 days a
+Docs: man:firewalld(1)
+Main PID: 24540 (firewalld)
+ Tasks: 2 (limit: 512)
+ CGroup: /system.slice/firewalld.service
+ └─24540 /usr/bin/python3 -Es /usr/sbin/firewalld --nofork –nopid
+
+
+
+2.3.2 Network Address Translation
+2.3.2.1 SNAT
+Step 1 Enable route forwarding.
+[root@Jumpserver ~]# sysctl -w net.ipv4.ip_forward=1
+net.ipv4.ip_forward = 1
+Step 2 Enable address masquerading.
+[root@Jumpserver ~]# firewall-cmd --add-masquerade
+success
+[root@Jumpserver ~]# firewall-cmd --list-all
+public (active)
+ target: default
+ icmp-block-inversion: no
+ interfaces: ens3
+ sources:
+ services: dhcpv6-client mdns ssh
+ ports:
+ protocols:
+ forward: yes
+ masquerade: yes
+ forward-ports:
+ source-ports:
+ icmp-blocks:
+ rich rules:
+Step 3 Add a route.
+Select a VPC to which a route is to be added and click Route Tables. On the Route
+Tables page, click Add Route.
+Enter the route information as prompted. Set the default gateway of the Server to the
+private IP address of JumpServer.
+
+
+Step 4 Log in to the server and verify the lab result.
+As shown in the following, the server can access the external network.
+[root@Jumperver ~]# ssh root@192.168.0.49
+[root@Server ~]# ping www.huaweicloud.com -c 3
+PING koa8myv3.sslego-dk.tcloudscdn.com (122.189.171.111) 56(84) bytes of data.
+64 bytes from 122.189.171.111 (122.189.171.111): icmp_seq=1 ttl=45 time=23.9 ms
+64 bytes from 122.189.171.111 (122.189.171.111): icmp_seq=2 ttl=45 time=23.9 ms
+64 bytes from 122.189.171.111 (122.189.171.111): icmp_seq=3 ttl=45 time=23.9 ms
+--- koa8myv3.sslego-dk.tcloudscdn.com ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2002ms
+rtt min/avg/max/mdev = 23.878/23.888/23.907/0.013 ms
+
+
+2.3.2.2 DNAT
+
+
+Step 1 Add port forwarding rules.
+[root@Jumpserver ~]# firewall-cmd --zone=public --add-forwardport=port=80:proto=tcp:toport=80:toaddr=192.168.0.86
+success
+[root@openEuler ~]# firewall-cmd --list-all
+public (active)
+ target: default
+ icmp-block-inversion: no
+ interfaces: ens3
+ sources:
+ services: dhcpv6-client mdns ssh
+ ports:
+ protocols:
+ forward: yes
+ masquerade: yes
+ forward-ports:
+port=80:proto=tcp:toport=80:toaddr=192.168.0.86
+ source-ports:
+ icmp-blocks:
+ rich rules:
+Step 2 Access the JumpServer public IP address (http://123.60.49.188/) to verify the lab
+result.
+
+
+2.3.3 Adding firewalld Rules Using CLI
+Step 1 Install firewalld and view the default zone information.
+[root@Server ~]# firewall-cmd --list-all
+public (active)
+ target: default
+ icmp-block-inversion: no
+ interfaces: eth0
+ sources:
+ services: ssh mdns dhcpv6-client
+ ports:
+ protocols:
+ masquerade: no
+ forward-ports:
+ source-ports:
+ icmp-blocks:
+ rich rules:
+In this case, the web service cannot be accessed through http://123.60.49.188/.
+Step 2 View services supported by firewalld.
+By default, firewalld provides more than 80 service groups. Check whether the HTTP
+service is included.
+[root@Server ~]# firewall-cmd --get-services | tr " " "\n" | grep 'http'
+http
+https
+wbem-http
+wbem-https
+Step 3 Add the HTTP service to the firewall zone and view the lab result.
+[root@Server ~]# firewall-cmd --add-service=http
+[root@Server ~]# firewall-cmd --list-services
+dhcpv6-client http mdns ssh
+The web page can be accessed through http://123.60.49.188/.
+
+Step 4 Forbid other hosts to ping the local host.
+[root@Server ~]# firewall-cmd --add-rich-rule='rule family=ipv4 protocol value=icmp reject'
+success
+Step 5 Set port forwarding rules.
+Forward an access request to port 22 of the local host when 192.168.0.209 is used to
+access port 5555.
+[root@Server ~]# firewall-cmd --add-rich-rule='rule family=ipv4 source address=192.168.0.209
+forward-port port=5555 protocol=tcp to-port=22'
+success
+[root@Server ~]# firewall-cmd --add-masquerade
+success
+Step 6 Permanently save firewall configurations.
+[root@Server ~]# firewall-cmd --runtime-to-permanent
+success
+
+
+
+2.3.4 Adding firewalld Rules Using an XML File
+Step 1 Delete firewalld rules.
+[root@Server ~]# cd /etc/firewalld/zones/
+[root@Server zones]# mv public.xml public.xml.old
+Step 2 Reload and check firewalld rules.
+[root@Server zones]# firewall-cmd --reload
+success
+[root@Server zones]# firewall-cmd --list-all
+public (active)
+ target: default
+ icmp-block-inversion: no
+ interfaces: ens3
+ sources:
+ services: dhcpv6-client mdns ssh
+ ports:
+ protocols:
+ forward: yes
+ masquerade: no
+ forward-ports:
+ source-ports:
+ icmp-blocks:
+ rich rules:
+Step 3 Use the default firewalld rule file.
+[root@Server zones]# mv /usr/lib/firewalld/zones/public.xml .
+
+
+Step 4 Modify the public.xml file as follows:
+⚫ (SNAT) Enable address masquerading.
+⚫ (DNAT) Forward an access request to port 80 of 192.168.0.86 when an external
+server is used to access port 80 of the local host.
+⚫ Forbid other hosts to ping the local host.
+⚫ Forward an access request to port 22 of the local host when 192.168.0.209 is used to
+access port 5555.
+
+
+Step 5 Reload and check rules.
+[root@Server zones]# firewall-cmd --reload
+success
+[root@Server zones]# firewall-cmd --list-all
+public (active)
+ target: default
+ icmp-block-inversion: no
+ interfaces: ens3
+ sources:
+ services: dhcpv6-client mdns ssh
+ ports:
+ protocols:
+ forward: yes
+ masquerade: yes
+ forward-ports:
+port=80:proto=tcp:toport=80:toaddr=192.168.0.86
+ source-ports:
+ icmp-blocks:
+ rich rules:
+rule family="ipv4" protocol value="icmp" reject
+rule family="ipv4" source address="192.168.0.209" forward-port port="5555" protocol="tcp" toport="22"
+
+
+2.4 Quiz
+⚫ Can firewalld and iptables be used at the same time?
+Answer: No. If iptables is directly used when firewalld is running, some unexpected
+problems may occur. For example, if a user directly uses iptables to delete rules or chains,
+the firewall may need to be reloaded to create them again.
+
+
+
+
+
+
